@@ -1,4 +1,3 @@
-;Global Variables
 (define listOfOperators '(+ - * / %))
 (define listOfArithmeticBooleanOperators '(< > <= >= == !=))
 (define listOfLogicalBooleanOperators '(&& ||)) ;Not added to language yet
@@ -164,8 +163,16 @@
   (lambda (appExp env)
     (let ((boolExp (eval-exp (car appExp) env))
           (trueExp (eval-exp (cadr appExp) env))
-          (falseExp (caddr appExp)))
-    (if boolExp trueExp (eval-exp falseExp env)))))
+          (falseExp (eval-exp (caddr appExp) env)))
+    (if boolExp trueExp falseExp))))
+
+(define eval-while-exp
+  (lambda (appExp env)
+    (let ((boolExp (eval-exp (car appExp) env))
+          (bodyExp (eval-exp (cadr appExp) env)))
+    (if boolExp
+        (cons bodyExp (eval-exp appExp env))
+        '()))))
 
     
 (define eval-exp
@@ -195,6 +202,9 @@
          ((eq? (list-ref (list-ref lce 1) 0) 'if-exp)
           ;first element of app-exp is an if-exp
           (eval-if-exp (cddr lce) env))
+         ((eq? (list-ref (list-ref lce 1) 0) 'while-exp)
+          ;first element of app-exp is an if-exp
+          (eval-while-exp (cddr lce) env))
          ((eq? (list-ref (list-ref lce 1) 0) 'let-exp)
           ;first element of app-exp is an let-exp
           (eval-exp (list-ref lce 3) (extend-env-4-let (cdr (list-ref lce 2)) env)))
@@ -260,7 +270,7 @@
         (list 'lit-exp 1))))))))
 (extend-env-4-let (list val) (empty-env))
 
-(run-program (parse-exp anExp))
+;(run-program (parse-exp anExp))
 
 
 ;(map (lambda (lst) (list-ref (list-ref lst 1) 1)) val)
