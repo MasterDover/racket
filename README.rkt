@@ -168,10 +168,10 @@
 
 (define eval-while-exp
   (lambda (appExp env)
-    (let ((boolExp (eval-exp (car appExp) env))
-          (bodyExp (eval-exp (cadr appExp) env)))
-    (if boolExp
-        (cons bodyExp (eval-exp appExp env))
+    (let ((boolExp (car appExp))
+          (bodyExp (cadr appExp)))
+    (if (eval-exp boolExp env)
+        (cons (eval-exp bodyExp env) (eval-while-exp (list boolExp bodyExp) (extend-env-4-lambda (list (list-ref (list-ref boolExp 2) 1)) (list (eval-exp bodyExp env)) env)))
         '()))))
 
     
