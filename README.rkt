@@ -1,7 +1,8 @@
+;Global Variables
 (define listOfOperators '(+ - * / %))
 (define listOfArithmeticBooleanOperators '(< > <= >= == !=))
 (define listOfLogicalBooleanOperators '(&& ||)) ;Not added to language yet
-(define listOfReservedWords '(if let while))
+(define listOfReservedWords '(if let while set block))
 
 ;generic helper functions
 ;returns true if val is found in lst
@@ -53,6 +54,23 @@
                              (extend-scope (car lovars) (car lovals) scope)))
       (else scope))))
 
+(define update-scope
+  (lambda (var val scope)
+    (map (lambda (lst)
+           (if (eq? (car lst) var)
+               (list var val)
+               lst))
+         scope)))
+
+(define update-env
+  (lambda (var val env)
+    (cond
+      ((null? env) #F)
+      (else (let ((currScope (car env)))
+              (if (not (eqv? (apply-scope var currScope) #f))
+                  (cons (update-scope var val currScope) (cdr env))
+                  (cons currScope (update-env var val (cdr env)))))))))
+
 (define extend-env-4-lambda
   (lambda (lovars lovals env)
     (extend-env
@@ -70,7 +88,7 @@
                (list
                 (if (eq? (caadr (cdr (car loexp))) 'lambda-exp)
                     (cadr (cdr (car loexp)))
-                    ((eval-exp (cadr (cdr (car loexp))) env))))
+                    (eval-exp (cadr (cdr (car loexp))) env)))
                env)))))
 
 
@@ -122,6 +140,8 @@
           (cond
             ((eq? lcExp 'if) (list 'if-exp))
             ((eq? lcExp 'let) (list 'let-exp))
+            ((eq? lcExp 'set) (list 'set-exp))
+            ((eq? lcExp 'block) (list 'block-exp))
             ((eq? lcExp 'while) (list 'while-exp))))
          (else (list 'var-exp lcExp))))
       ((eq? (car lcExp) 'lambda)
@@ -142,7 +162,7 @@
         ((eq? theOp '>) (> op1 op2))
         ((eq? theOp '>=) (>= op1 op2))
         ((eq? theOp '==) (= op1 op2))
-        ((eq? theOp '!=) (not (= op1 op2)))))))
+        ((eq? theOp '!=) (not(= op1 op2)))))))
 
 ;evaluates an app expression whose car is an operator
 (define eval-op-exp
@@ -159,20 +179,36 @@
         (else #f)))))
 
 ;evaluates an app expression whose car is an if-exp
+
+;(trueExp (eval-exp (cadr appExp) env))
+;(falseExp (eval-exp (caddr appExp) env)))
+
 (define eval-if-exp
   (lambda (appExp env)
-    (let ((boolExp (eval-exp (car appExp) env))
-          (trueExp (eval-exp (cadr appExp) env))
-          (falseExp (eval-exp (caddr appExp) env)))
-    (if boolExp trueExp falseExp))))
+    (let ((boolExp (eval-exp (car appExp) env)))
+    (if boolExp
+        (eval-exp (cadr appExp) env)
+        (eval-exp (caddr appExp) env)))))
 
 (define eval-while-exp
   (lambda (appExp env)
-    (let ((boolExp (car appExp))
-          (bodyExp (cadr appExp)))
-    (if (eval-exp boolExp env)
-        (cons (eval-exp bodyExp env) (eval-while-exp (list boolExp bodyExp) (extend-env-4-lambda (list (list-ref (list-ref boolExp 2) 1)) (list (eval-exp bodyExp env)) env)))
-        '()))))
+    (let ((boolExp (eval-exp (car appExp) env)))
+    (if boolExp
+        (list (eval-exp (cadr appExp) env) (eval-while-exp appExp env))
+        #F))))
+
+(define eval-block-exp
+  (lambda (listOfExprs env)
+    (if (null? listOfExprs)
+        '()
+        (let ((result (eval-exp (car listOfExprs) env)))
+          (if (list? result)
+              (eval-block-exp (cdr listOfExprs) result)
+              (cons result (eval-block-exp (cdr listOfExprs) env)))))))
+
+
+  
+;(define anExp '(let ((a 5)) (while (!= a 0) (block (set a (- a 1))))))
 
     
 (define eval-exp
@@ -202,8 +238,18 @@
          ((eq? (list-ref (list-ref lce 1) 0) 'if-exp)
           ;first element of app-exp is an if-exp
           (eval-if-exp (cddr lce) env))
+         ((eq? (list-ref (list-ref lce 1) 0) 'set-exp)
+          ;first element of app-exp is an set-exp
+          (update-env
+           (list-ref (list-ref lce 2) 1)
+           (eval-exp (list-ref lce 3) env)
+           env))
+         ((eq? (list-ref (list-ref lce 1) 0) 'block-exp)
+          ;first element of app-exp is an block-exp
+          (let ((listOfExprs (cdr (list-ref lce 2))))
+            (eval-block-exp listOfExprs env)))
          ((eq? (list-ref (list-ref lce 1) 0) 'while-exp)
-          ;first element of app-exp is an if-exp
+          ;first element of app-exp is an while-exp
           (eval-while-exp (cddr lce) env))
          ((eq? (list-ref (list-ref lce 1) 0) 'let-exp)
           ;first element of app-exp is an let-exp
@@ -226,51 +272,13 @@
     (eval-exp lce (empty-env))))
 
 
-;(define anExp '(let ((a 5) (b 7)) (+ a (let ((c 3) (b (- b 2))) (+ b c)))))
-;(define anExp '(let ((a 5) (b 7)) (+ a (let ((c 3) (b (* c 2))) (+ b c))))) ;should be 14 when working
-;(define anExp '(let ((a 5) (b 4)) (+ a b)))
-;(define anExp '(let ((a (lambda (x) (* x 2))) (b (lambda (x y) (+ x y)))) (b (a 5) (a 7))))
-(define anExp '(let ((fact (lambda (x) (if (== x 1) 1 (* x (fact (- x 1))))))) (fact 4))) 
+(define anExp '(let ((a 5) (b 4) (c 5)) (while (!= a 0) (block (a (set a (- a 1)))))))
+;(define anExp '(let ((i 0)) (while (< i 5) (block i (set i (+ i 1))))))
+;(define anExp '(let ((fact (lambda (x) (if (== x 1) 1 (* x (fact (- x 1))))))) (fact 4))) 
 ;(define anExp '((lambda (a b) (a b)) (lambda (x) (* x 2)) 5))
-
-;Pass the above to apply-env to make sure it comes out
-
-
-;(test val (empty-env))
-
-;(list (cadr (car (cdr (car lst)))))))) list of vars
-;(cadr (cdr (car lst))) list of vals
-;(parse-exp anExp)
-(define val (list
-   'app-exp
-   (list 'var-exp 'fact)
-   (list
-    'lambda-exp
-    (list 'x)
-    (list
-     'app-exp
-     (list 'if-exp)
-     (list
-      'app-exp
-      (list 'bool-arith-op-exp '==)
-      (list 'var-exp 'x)
-      (list 'lit-exp 1))
-     (list 'lit-exp 1)
-     (list
-      'app-exp
-      (list 'op-exp '*)
-      (list 'var-exp 'x)
-      (list
-       'app-exp
-       (list 'var-exp 'fact)
-       (list
-        'app-exp
-        (list 'op-exp '-)
-        (list 'var-exp 'x)
-        (list 'lit-exp 1))))))))
-(extend-env-4-let (list val) (empty-env))
-
-;(run-program (parse-exp anExp))
-
+(parse-exp anExp)
+(run-program (parse-exp anExp))
 
 ;(map (lambda (lst) (list-ref (list-ref lst 1) 1)) val)
+Status API Training Shop Blog About Pricing
+© 2015 GitHub, Inc. Terms Privacy Security Contact Help
